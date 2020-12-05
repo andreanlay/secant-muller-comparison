@@ -1,10 +1,10 @@
 import sys
-import cexprtk as solver
 import matplotlib.pyplot as plt
-from PyQt5 import QtCore, QtGui, QtWidgets
-from math import *
+import numpy as np
+import numexpr as ne
 
-table = solver.Symbol_Table({'e': 2.7182818284, 'x': -1}, add_constants=True) 
+from PyQt5 import QtCore, QtGui, QtWidgets
+
 exp = x1 = x2 = x3 = None
 max_error = max_iter = None
 
@@ -252,11 +252,12 @@ def plot_graph():
     plt.show()
 
 def f(x):
-    return solver.evaluate_expression(exp, {'x': x, 'e': 2.7182818284})
+    # return solver.evaluate_expression(exp, {'x': x, 'e': 2.7182818284})
+    return ne.evaluate(exp)
 
 def secant(x_prev, x):
     x_list = []
-    err_list = [100]
+    err_list = []
     x_prev_list = [x_prev]
     x_next_list = [x]
 
@@ -264,6 +265,8 @@ def secant(x_prev, x):
     x_prev_value = f(x_prev)
     x_next = x - (x_value * (x - x_prev)) / (x_value - x_prev_value)
     x_list.append(x_next)
+    err_list.append(abs((x_next - x) / x_next) * 100)
+
     i = 1
     while True:
         if i == max_iter:
@@ -288,47 +291,46 @@ def secant(x_prev, x):
     return x_list, err_list, x_prev_list, x_next_list
     
 def muller(x0, x1, x2):
-    root = 0.0
     i = 1
     x0_list = [x0]
     x1_list = [x1]
     x2_list = [x2]
     roots = []
     errors = []
+    x_new = [x0, x1, x2]
+
     while True:
+        x0 = x_new[0]
+        x1 = x_new[1]
+        x2 = x_new[2]
 
-        x0_val = f(x0)
-        x1_val = f(x1)
-        x2_val = f(x2)
-
-        d1 = x0_val - x2_val
-        d2 = x1_val - x2_val
-        h1 = x0 - x2
-        h2 = x1 - x2
+        A = [
+            [(x0 - x1)**2, x0 - x1, 1],
+            [0, 0, 1],
+            [(x2 - x1)**2, x2 - x1, 1]
+        ]
+        y = np.array([[f(x0), f(x1), f(x2)]])
+        y = y.T
         
-        a = ((d1 * h2) - (d2 * h1)) / ((h1 * h2) * (h1 - h2))
-        b = ((d2 * h1**2) - (d1 * h2**2)) / ((h1 * h2) * (h1 - h2))
-        c = x2_val
-        
-        root1 = x2 + ((-2 * c) / (b + sqrt(b**2 - 4*a*c)))
-        root2 = x2 + ((-2 * c) / (b - sqrt(b**2 - 4*a*c)))
+        c = np.linalg.solve(A, y)
 
-        root = root1 if root1 >= root2 else root2
-        roots.append(root)
+        try:
+            x_new = [x1, x2, (x1 - 2*c[2] / (c[1] + np.lib.scimath.sqrt(c[1]**2 - 4*c[0]*c[2])))[0]]
+        except:
+            display_error('This program currently does not support complex root!')
+  
+        roots.append(x_new[2])
+        errors.append(abs((x_new[2] - x_new[1]) / x_new[2]) * 100)
 
-        err = abs((root - x2) / root) * 100 
-        errors.append(err)
-        if err < max_error:
+        if errors[-1] < max_error:
             break
         if i == max_iter:
             display_error('Muller fail to converge until {} iteration(s)'.format(max_iter))
             break
-        x0 = x1
-        x1 = x2
-        x2 = root
-        x0_list.append(x0)
-        x1_list.append(x1)
-        x2_list.append(x2)
+
+        x0_list.append(x_new[0])
+        x1_list.append(x_new[1])
+        x2_list.append(x_new[2])
         i += 1
     
     return roots, errors, x0_list, x1_list, x2_list
