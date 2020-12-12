@@ -158,7 +158,7 @@ class Ui_Form(object):
         self.x1_label.setText(_translate("Form", "x1"))
         self.x2_label.setText(_translate("Form", "x2"))
         self.x3_label.setText(_translate("Form", "x3"))
-        self.hyperparameter_groupbox.setTitle(_translate("Form", "Hyperparameter"))
+        self.hyperparameter_groupbox.setTitle(_translate("Form", "Option"))
         self.error_input.setPlaceholderText(_translate("Form", "Default: 3%"))
         self.max_error_label.setText(_translate("Form", "Max Error (%)"))
         self.max_inter_input.setPlaceholderText(_translate("Form", "Default: 100"))
@@ -200,6 +200,12 @@ def calculate():
         max_iter = int(ui.max_inter_input.text()) if ui.max_inter_input.text() else 100
     except:
         display_error('Please fill all input fields')
+        return
+        
+    try:
+        f(x1)
+    except:
+        display_error('Wrong input format!')
         return
 
     try:
@@ -252,23 +258,27 @@ def plot_graph():
     plt.show()
 
 def f(x):
-    # return solver.evaluate_expression(exp, {'x': x, 'e': 2.7182818284})
     return ne.evaluate(exp)
 
 def secant(x_prev, x):
     x_list = []
-    err_list = []
+    err_list = [100]
     x_prev_list = [x_prev]
     x_next_list = [x]
 
-    x_value = f(x)
-    x_prev_value = f(x_prev)
-    x_next = x - (x_value * (x - x_prev)) / (x_value - x_prev_value)
-    x_list.append(x_next)
-    err_list.append(abs((x_next - x) / x_next) * 100)
-
     i = 1
     while True:
+        x_next = x - f(x) * ((x - x_prev) / (f(x) - f(x_prev)))
+        x_list.append(x_next)
+
+        if f(x_next) == 0:
+            break
+        if i > 1:
+            error = abs((x_next - x) / x_next) * 100
+            err_list.append(error)
+            if err_list[-1] < max_error:
+                break
+
         if i == max_iter:
             display_error('Secant fail converge until {} iteration(s)!'.format(max_iter))
             break
@@ -276,16 +286,6 @@ def secant(x_prev, x):
         x = x_next
         x_prev_list.append(x_prev)
         x_next_list.append(x)
-
-        x_value = f(x)
-        x_prev_value = f(x_prev)
-        x_next = x - (x_value * (x - x_prev)) / (x_value - x_prev_value)
-        x_list.append(x_next)
-
-        error = abs((x_next - x) / x_next) * 100
-        err_list.append(error)
-        if error < max_error:
-            break
         i += 1
 
     return x_list, err_list, x_prev_list, x_next_list
@@ -303,24 +303,37 @@ def muller(x0, x1, x2):
         x0 = x_new[0]
         x1 = x_new[1]
         x2 = x_new[2]
-
-        A = [
-            [(x0 - x1)**2, x0 - x1, 1],
-            [0, 0, 1],
-            [(x2 - x1)**2, x2 - x1, 1]
-        ]
-        y = np.array([[f(x0), f(x1), f(x2)]])
-        y = y.T
         
-        c = np.linalg.solve(A, y)
+        h1 = x1 - x0
+        h2 = x2 - x1 
 
-        try:
-            x_new = [x1, x2, (x1 - 2*c[2] / (c[1] + np.lib.scimath.sqrt(c[1]**2 - 4*c[0]*c[2])))[0]]
-        except:
-            display_error('This program currently does not support complex root!')
-  
-        roots.append(x_new[2])
-        errors.append(abs((x_new[2] - x_new[1]) / x_new[2]) * 100)
+        delta0 = (f(x1) - f(x0)) / h1
+        delta1 = (f(x2) - f(x1)) / h2
+        
+        a = (delta1 - delta0) / (h2 + h1)
+        b = delta1 + a*h2
+        c = f(x2)
+            
+        D = np.lib.scimath.sqrt(b**2 - 4*a*c)
+
+        h = -2 * c / np.maximum(b + D, b - D)
+        x_next = x2 + h
+        
+        errors.append(abs((x_next - x2) / x_next) * 100)
+        roots.append(x_next)
+
+        if f(x_next) == 0:
+            break
+
+        if f(x1) == f(x2) == f(x_next):
+            display_error('Muller fail to converge! (All points ended in the same function value, apply Secant Method.)')
+            break
+           
+        if x1 == x2 == x_next:
+            display_error('Muller fail to converge! (All points ended on the same line)')
+            break
+
+        x_new = [x1, x2, x_next]
 
         if errors[-1] < max_error:
             break
@@ -328,9 +341,9 @@ def muller(x0, x1, x2):
             display_error('Muller fail to converge until {} iteration(s)'.format(max_iter))
             break
 
-        x0_list.append(x_new[0])
-        x1_list.append(x_new[1])
-        x2_list.append(x_new[2])
+        x0_list.append(x1)
+        x1_list.append(x2)
+        x2_list.append(x_next)
         i += 1
     
     return roots, errors, x0_list, x1_list, x2_list
